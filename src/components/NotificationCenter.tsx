@@ -3,6 +3,7 @@ import { useLeague } from "@/state/league";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { subscribeAiStatus } from "@/lib/ai-status";
+import { subscribeIncomingDm } from "@/lib/message-notifications";
 
 type NotifKind =
   | "return"
@@ -13,6 +14,7 @@ type NotifKind =
   | "week"
   | "champion"
   | "sack"
+  | "message"
   | "ai-credits"
   | "ai-rate";
 
