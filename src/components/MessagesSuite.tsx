@@ -420,6 +420,12 @@ export function MessagesSuite() {
             .maybeSingle();
           const row = (inserted as unknown) as RawRow | null;
           toast(`New DM from ${hit.contact.counterpartName}`, { description: res.reply.slice(0, 120) });
+          notifyIncomingDm({
+            from: hit.contact.counterpartName,
+            team: hit.contact.counterpartTeam,
+            kind: hit.contact.kind as "manager" | "player",
+            preview: res.reply,
+          });
           // If this is the active thread, append it live.
           if (row && contact && keyOf(contact) === keyOf(hit.contact)) {
             setRows((r) => [...r, row]);
