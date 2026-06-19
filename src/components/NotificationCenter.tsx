@@ -3,6 +3,7 @@ import { useLeague } from "@/state/league";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { subscribeAiStatus } from "@/lib/ai-status";
+import { subscribeIncomingDm } from "@/lib/message-notifications";
 
 type NotifKind =
   | "return"
@@ -13,6 +14,7 @@ type NotifKind =
   | "week"
   | "champion"
   | "sack"
+  | "message"
   | "ai-credits"
   | "ai-rate";
 
@@ -33,6 +35,7 @@ const KIND_META: Record<NotifKind, { icon: string; tone: string }> = {
   week: { icon: "›", tone: "text-muted-foreground" },
   champion: { icon: "🏆", tone: "text-stadium-gold" },
   sack: { icon: "⚑", tone: "text-highlight-red" },
+  message: { icon: "✉", tone: "text-highlight-blue" },
   "ai-credits": { icon: "⚡", tone: "text-highlight-red" },
   "ai-rate": { icon: "⏳", tone: "text-stadium-gold" },
 };
@@ -107,6 +110,19 @@ export function NotificationCenter() {
       }
     });
   }, []);
+
+  // Incoming DMs from rival managers or your own players.
+  useEffect(() => {
+    return subscribeIncomingDm((m) => {
+      const who = m.kind === "manager" ? `${m.from} (${m.team})` : `${m.from}`;
+      push([{
+        kind: "message",
+        title: `New message from ${who}`,
+        detail: m.preview.length > 140 ? `${m.preview.slice(0, 140)}…` : m.preview,
+      }]);
+    });
+  }, []);
+
 
   useEffect(() => {
     const leader = standings[0]?.team ?? null;
