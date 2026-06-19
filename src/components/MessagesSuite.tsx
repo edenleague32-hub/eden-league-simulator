@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useLeague, isPlayerOut, type LeaguePlayer } from "@/state/league";
 import { sendDm, scoreTeamMessage, type Counterpart, type DmTurn } from "@/lib/messages.functions";
+import { notifyIncomingDm } from "@/lib/message-notifications";
 import { relationLabel } from "@/lib/relations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
