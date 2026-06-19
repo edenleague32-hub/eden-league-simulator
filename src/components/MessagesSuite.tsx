@@ -517,13 +517,23 @@ export function MessagesSuite() {
               <div>
                 <div className="text-sm font-extrabold">{contact.counterpartName}</div>
                 <div className="text-[11px] text-muted-foreground">
-                  {contact.kind === "manager" ? `Manager of ${contact.counterpartTeam}` : `Your player on ${contact.counterpartTeam}`}
+                  {contact.kind === "manager"
+                    ? `Manager of ${contact.counterpartTeam}`
+                    : contact.kind === "team"
+                    ? `Dressing-room broadcast · every player on ${contact.counterpartTeam} reads it`
+                    : `Your player on ${contact.counterpartTeam}`}
                 </div>
               </div>
               <Button size="sm" variant="ghost" onClick={deleteThread} className="text-destructive hover:text-destructive">CLEAR</Button>
             </div>
             <div ref={scrollRef} className="mb-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
-              {rows.length === 0 && <p className="text-xs text-muted-foreground">No messages yet — say hi.</p>}
+              {rows.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {contact.kind === "team"
+                    ? "No team messages yet. Address the squad — every word here lands on every player."
+                    : "No messages yet — say hi."}
+                </p>
+              )}
               {rows.map((r) => (
                 <div key={r.id} className={r.role === "user" ? "text-right" : "text-left"}>
                   <div className={`inline-block max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${r.role === "user" ? "bg-highlight-blue/10 text-foreground" : "border bg-background text-foreground"}`}>
@@ -531,19 +541,27 @@ export function MessagesSuite() {
                   </div>
                 </div>
               ))}
-              {sending && <p className="text-xs text-muted-foreground">{contact.counterpartName} is typing…</p>}
+              {sending && contact.kind !== "team" && <p className="text-xs text-muted-foreground">{contact.counterpartName} is typing…</p>}
+              {sending && contact.kind === "team" && <p className="text-xs text-muted-foreground">Squad is reading…</p>}
             </div>
+            {contact.kind === "team" && (
+              <p className="mb-2 text-[11px] text-muted-foreground">
+                Only you post here. Players can't reply in the team chat — if something hits home they'll DM you privately.
+              </p>
+            )}
             {error && <div className="mb-2 rounded-lg border-l-4 border-highlight-red bg-background px-3 py-2 text-xs">{error}</div>}
             <div className="flex gap-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                placeholder="Type a private message…"
+                placeholder={contact.kind === "team" ? "Address the dressing room…" : "Type a private message…"}
                 className="bg-background"
                 disabled={sending}
               />
-              <Button onClick={send} disabled={sending || !input.trim()} className="font-semibold">Send</Button>
+              <Button onClick={send} disabled={sending || !input.trim()} className="font-semibold">
+                {contact.kind === "team" ? "Post" : "Send"}
+              </Button>
             </div>
           </>
         )}
