@@ -985,6 +985,7 @@ interface LeagueContextValue {
   applyManagerRespectDelta: (team: string, delta: number) => void;
   applyManagerHarshnessSample: (team: string, sample: number) => void;
   applyPlayerMoraleDelta: (team: string, playerName: string, delta: number) => void;
+  applyAllPlayersMoraleDelta: (team: string, delta: number) => void;
   applyTeamMoraleDelta: (team: string, delta: number) => void;
   standings: StandingRow[];
   leaderboards: Leaderboards;
