@@ -61,12 +61,16 @@ function briefForPlayerDm(p: LeaguePlayer, team: string, teamStanding: string): 
   ].join("\n");
 }
 
+const TEAM_CHAT_NAME = "Team Chat";
+
 export function MessagesSuite() {
   const {
     state, standings,
     applyRelationDelta, applyPlayerMoraleDelta,
+    applyAllPlayersMoraleDelta, applyManagerRespectDelta,
   } = useLeague();
   const sendFn = useServerFn(sendDm);
+  const scoreTeamFn = useServerFn(scoreTeamMessage);
 
   const exempt = state.settings?.contractExemptTeams ?? [];
   const userTeams = state.teamOrder.filter((t) => exempt.includes(t));
