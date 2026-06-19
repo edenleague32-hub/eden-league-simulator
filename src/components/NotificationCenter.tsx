@@ -111,6 +111,19 @@ export function NotificationCenter() {
     });
   }, []);
 
+  // Incoming DMs from rival managers or your own players.
+  useEffect(() => {
+    return subscribeIncomingDm((m) => {
+      const who = m.kind === "manager" ? `${m.from} (${m.team})` : `${m.from}`;
+      push([{
+        kind: "message",
+        title: `New message from ${who}`,
+        detail: m.preview.length > 140 ? `${m.preview.slice(0, 140)}…` : m.preview,
+      }]);
+    });
+  }, []);
+
+
   useEffect(() => {
     const leader = standings[0]?.team ?? null;
     const proposals = state.tradeProposals.length;
