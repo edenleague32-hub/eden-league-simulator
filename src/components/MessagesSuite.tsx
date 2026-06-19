@@ -443,6 +443,22 @@ export function MessagesSuite() {
           </Select>
         </div>
 
+        {(() => {
+          const k: ContactKey = { userTeam, kind: "team", counterpartTeam: userTeam, counterpartName: TEAM_CHAT_NAME };
+          const active = contact && keyOf(contact) === keyOf(k);
+          return (
+            <button
+              onClick={() => setContact(k)}
+              className={`flex w-full items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2 text-left text-xs hover:bg-muted ${active ? "bg-muted font-semibold" : ""}`}
+            >
+              <span className="truncate">
+                <span className="font-bold">📣 Team Chat</span>
+                <span className="block text-[10px] text-muted-foreground">Broadcast to {userTeam || "your squad"}</span>
+              </span>
+            </button>
+          );
+        })()}
+
         <div className="rounded-xl border bg-card">
           <div className="border-b bg-panel px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Managers</div>
           <ul className="max-h-64 divide-y overflow-y-auto">
