@@ -8,7 +8,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useLeague, isPlayerOut, type LeaguePlayer } from "@/state/league";
-import { sendDm, type Counterpart, type DmTurn } from "@/lib/messages.functions";
+import { sendDm, scoreTeamMessage, type Counterpart, type DmTurn } from "@/lib/messages.functions";
 import { relationLabel } from "@/lib/relations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,12 +61,16 @@ function briefForPlayerDm(p: LeaguePlayer, team: string, teamStanding: string): 
   ].join("\n");
 }
 
+const TEAM_CHAT_NAME = "Team Chat";
+
 export function MessagesSuite() {
   const {
     state, standings,
     applyRelationDelta, applyPlayerMoraleDelta,
+    applyAllPlayersMoraleDelta, applyManagerRespectDelta,
   } = useLeague();
   const sendFn = useServerFn(sendDm);
+  const scoreTeamFn = useServerFn(scoreTeamMessage);
 
   const exempt = state.settings?.contractExemptTeams ?? [];
   const userTeams = state.teamOrder.filter((t) => exempt.includes(t));
@@ -192,6 +196,53 @@ export function MessagesSuite() {
     const myRow = await persist("user", msg);
     if (myRow) setRows((r) => [...r, myRow]);
     setInput("");
+
+    // Team Chat — manager broadcasts to the dressing room. One cheap AI scoring
+    // call, then apply morale to every player + manager respect. No AI reply.
+    if (contact.kind === "team") {
+      try {
+        const squad = state.teams[contact.counterpartTeam];
+        const standingRow = standings.find((s) => s.team === contact.counterpartTeam);
+        const rec = standingRow
+          ? `record ${standingRow.w}W ${standingRow.d}D ${standingRow.l}L, rank ${standingRow.rank}/${standings.length}`
+          : "no record yet";
+        const avgMorale = squad && squad.players.length
+          ? Math.round(squad.players.reduce((s, p) => s + (p.morale ?? 50), 0) / squad.players.length)
+          : 50;
+        const squadBrief = [
+          `Club: ${contact.counterpartTeam}.`,
+          `Current ${rec}.`,
+          `Squad size ${squad?.players.length ?? 0}, average morale ${avgMorale}/100.`,
+        ].join("\n");
+        const history: DmTurn[] = rows.map((r) => ({ role: r.role, text: r.content }));
+        const res = await scoreTeamFn({
+          data: {
+            userTeam: contact.userTeam,
+            userManagerName: state.managers?.[contact.userTeam]?.name ?? "Manager",
+            squadBrief,
+            history,
+            userMessage: msg,
+          },
+        });
+        const moraleMul = (state.settings?.pressInfluenceBaseline ?? 1) * (state.settings?.moraleVolatility ?? 1);
+        const respectMul = (state.settings?.managerRatingVolatility ?? 1);
+        const moraleDelta = Math.round(res.moraleTone * 2 * moraleMul);
+        const respectDelta = res.respectTone * 0.8 * respectMul;
+        if (moraleDelta !== 0) applyAllPlayersMoraleDelta(contact.userTeam, moraleDelta);
+        if (respectDelta !== 0) applyManagerRespectDelta(contact.userTeam, respectDelta);
+        const desc = moraleDelta === 0 && respectDelta === 0
+          ? "Squad noted it, no real change."
+          : `Squad morale ${moraleDelta >= 0 ? "+" : ""}${moraleDelta} · respect ${respectDelta >= 0 ? "+" : ""}${respectDelta.toFixed(1)}`;
+        toast("Team Chat sent", { description: desc });
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        reportAiOutcome(m);
+        if (m.includes("RATE_LIMIT")) setError("Servers busy — try again in a moment.");
+        else if (m.includes("CREDITS")) setError("AI credits exhausted. Add credits in Settings → Workspace → Usage.");
+        else setError("Couldn't score message. Effects not applied.");
+      } finally { setSending(false); }
+      return;
+    }
 
     // Real-life async: sometimes nobody answers right away (or at all).
     if (!shouldReply(msg)) {
@@ -392,6 +443,22 @@ export function MessagesSuite() {
           </Select>
         </div>
 
+        {(() => {
+          const k: ContactKey = { userTeam, kind: "team", counterpartTeam: userTeam, counterpartName: TEAM_CHAT_NAME };
+          const active = contact && keyOf(contact) === keyOf(k);
+          return (
+            <button
+              onClick={() => setContact(k)}
+              className={`flex w-full items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2 text-left text-xs hover:bg-muted ${active ? "bg-muted font-semibold" : ""}`}
+            >
+              <span className="truncate">
+                <span className="font-bold">📣 Team Chat</span>
+                <span className="block text-[10px] text-muted-foreground">Broadcast to {userTeam || "your squad"}</span>
+              </span>
+            </button>
+          );
+        })()}
+
         <div className="rounded-xl border bg-card">
           <div className="border-b bg-panel px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Managers</div>
           <ul className="max-h-64 divide-y overflow-y-auto">
@@ -450,13 +517,23 @@ export function MessagesSuite() {
               <div>
                 <div className="text-sm font-extrabold">{contact.counterpartName}</div>
                 <div className="text-[11px] text-muted-foreground">
-                  {contact.kind === "manager" ? `Manager of ${contact.counterpartTeam}` : `Your player on ${contact.counterpartTeam}`}
+                  {contact.kind === "manager"
+                    ? `Manager of ${contact.counterpartTeam}`
+                    : contact.kind === "team"
+                    ? `Dressing-room broadcast · every player on ${contact.counterpartTeam} reads it`
+                    : `Your player on ${contact.counterpartTeam}`}
                 </div>
               </div>
               <Button size="sm" variant="ghost" onClick={deleteThread} className="text-destructive hover:text-destructive">CLEAR</Button>
             </div>
             <div ref={scrollRef} className="mb-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
-              {rows.length === 0 && <p className="text-xs text-muted-foreground">No messages yet — say hi.</p>}
+              {rows.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {contact.kind === "team"
+                    ? "No team messages yet. Address the squad — every word here lands on every player."
+                    : "No messages yet — say hi."}
+                </p>
+              )}
               {rows.map((r) => (
                 <div key={r.id} className={r.role === "user" ? "text-right" : "text-left"}>
                   <div className={`inline-block max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${r.role === "user" ? "bg-highlight-blue/10 text-foreground" : "border bg-background text-foreground"}`}>
@@ -464,19 +541,27 @@ export function MessagesSuite() {
                   </div>
                 </div>
               ))}
-              {sending && <p className="text-xs text-muted-foreground">{contact.counterpartName} is typing…</p>}
+              {sending && contact.kind !== "team" && <p className="text-xs text-muted-foreground">{contact.counterpartName} is typing…</p>}
+              {sending && contact.kind === "team" && <p className="text-xs text-muted-foreground">Squad is reading…</p>}
             </div>
+            {contact.kind === "team" && (
+              <p className="mb-2 text-[11px] text-muted-foreground">
+                Only you post here. Players can't reply in the team chat — if something hits home they'll DM you privately.
+              </p>
+            )}
             {error && <div className="mb-2 rounded-lg border-l-4 border-highlight-red bg-background px-3 py-2 text-xs">{error}</div>}
             <div className="flex gap-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                placeholder="Type a private message…"
+                placeholder={contact.kind === "team" ? "Address the dressing room…" : "Type a private message…"}
                 className="bg-background"
                 disabled={sending}
               />
-              <Button onClick={send} disabled={sending || !input.trim()} className="font-semibold">Send</Button>
+              <Button onClick={send} disabled={sending || !input.trim()} className="font-semibold">
+                {contact.kind === "team" ? "Post" : "Send"}
+              </Button>
             </div>
           </>
         )}

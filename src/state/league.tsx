@@ -985,6 +985,7 @@ interface LeagueContextValue {
   applyManagerRespectDelta: (team: string, delta: number) => void;
   applyManagerHarshnessSample: (team: string, sample: number) => void;
   applyPlayerMoraleDelta: (team: string, playerName: string, delta: number) => void;
+  applyAllPlayersMoraleDelta: (team: string, delta: number) => void;
   applyTeamMoraleDelta: (team: string, delta: number) => void;
   standings: StandingRow[];
   leaderboards: Leaderboards;
@@ -2111,6 +2112,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         const players = t.players.map((p) =>
           p.name === playerName ? { ...p, morale: clampMorale(p.morale + delta) } : p,
         );
+        return { ...prev, teams: { ...prev.teams, [team]: { ...t, players } } };
+      }),
+    applyAllPlayersMoraleDelta: (team, delta) =>
+      update((prev) => {
+        const t = prev.teams[team];
+        if (!t) return prev;
+        const players = t.players.map((p) => ({ ...p, morale: clampMorale(p.morale + delta) }));
         return { ...prev, teams: { ...prev.teams, [team]: { ...t, players } } };
       }),
     applyTeamMoraleDelta: (team, delta) =>

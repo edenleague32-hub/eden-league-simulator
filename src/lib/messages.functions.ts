@@ -6,7 +6,7 @@ import { createServerFn } from "@tanstack/react-start";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-3-flash-preview";
 
-export type Counterpart = "manager" | "player";
+export type Counterpart = "manager" | "player" | "team";
 export interface DmTurn { role: "user" | "ai"; text: string; }
 
 interface DmInput {
@@ -129,3 +129,64 @@ function clampInt(v: unknown, max: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(-max, Math.min(max, Math.round(n)));
 }
+
+// Team Chat — manager-only broadcast to their own dressing room. We only ask
+// the AI to SCORE the manager's message (no per-player reply text), then apply
+// the result to every player's morale + the manager's own respect rating.
+// One small AI call per team post → cheap even with heavy use.
+interface TeamScoreInput {
+  userTeam: string;
+  userManagerName: string;
+  squadBrief: string; // short factual brief about the squad / standing
+  history: DmTurn[];
+  userMessage: string;
+}
+
+const TEAM_SCORE_RULES = `
+You read a private dressing-room message from a football manager to their entire squad and score how it would land.
+
+ABSOLUTE RULES:
+- Use ONLY the BRIEF for facts. Do NOT generate any player reply text.
+- Score honestly: praise and clear, fair leadership lift morale and earn respect; vague positivity is neutral; insults, blame, threats, public shaming, or panic LOWER morale AND respect.
+- Sarcasm directed at the squad counts as harsh.
+
+OUTPUT FORMAT — JSON object exactly, nothing else:
+{"moraleTone":<integer -3..3>,"respectTone":<integer -3..3>}
+- "moraleTone": how the average player would feel after reading it.
+- "respectTone": how this message affects the squad's respect for the gaffer.
+No markdown, no extra keys, no reply text.
+`;
+
+export const scoreTeamMessage = createServerFn({ method: "POST" })
+  .inputValidator((d: TeamScoreInput) => {
+    if (!d) throw new Error("Empty payload");
+    if (typeof d.userMessage !== "string" || d.userMessage.trim().length === 0) {
+      throw new Error("Empty message");
+    }
+    return d;
+  })
+  .handler(async ({ data }): Promise<{ moraleTone: number; respectTone: number }> => {
+    const key = process.env.LOVABLE_API_KEY;
+    if (!key) throw new Error("AI is not configured");
+    const persona = `You are an impartial dressing-room observer for ${data.userTeam}. The manager is ${data.userManagerName}.`;
+    const history = data.history.length
+      ? data.history.slice(-6).map((h) => `MANAGER: ${h.text}`).join("\n")
+      : "(no prior team messages)";
+    const user = [
+      `BRIEF (only facts you may use):`,
+      data.squadBrief,
+      ``,
+      `RECENT TEAM MESSAGES:`,
+      history,
+      ``,
+      `NEW TEAM MESSAGE: ${data.userMessage}`,
+      ``,
+      `Score it now in JSON only.`,
+    ].join("\n");
+    const content = await callGateway(key, persona + "\n" + TEAM_SCORE_RULES, user, 0.3);
+    const parsed = extractJson<{ moraleTone?: unknown; respectTone?: unknown }>(content);
+    return {
+      moraleTone: clampInt(parsed?.moraleTone, 3),
+      respectTone: clampInt(parsed?.respectTone, 3),
+    };
+  });
