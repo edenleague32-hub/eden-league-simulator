@@ -197,6 +197,53 @@ export function MessagesSuite() {
     if (myRow) setRows((r) => [...r, myRow]);
     setInput("");
 
+    // Team Chat — manager broadcasts to the dressing room. One cheap AI scoring
+    // call, then apply morale to every player + manager respect. No AI reply.
+    if (contact.kind === "team") {
+      try {
+        const squad = state.teams[contact.counterpartTeam];
+        const standingRow = standings.find((s) => s.team === contact.counterpartTeam);
+        const rec = standingRow
+          ? `record ${standingRow.w}W ${standingRow.d}D ${standingRow.l}L, rank ${standingRow.rank}/${standings.length}`
+          : "no record yet";
+        const avgMorale = squad && squad.players.length
+          ? Math.round(squad.players.reduce((s, p) => s + (p.morale ?? 50), 0) / squad.players.length)
+          : 50;
+        const squadBrief = [
+          `Club: ${contact.counterpartTeam}.`,
+          `Current ${rec}.`,
+          `Squad size ${squad?.players.length ?? 0}, average morale ${avgMorale}/100.`,
+        ].join("\n");
+        const history: DmTurn[] = rows.map((r) => ({ role: r.role, text: r.content }));
+        const res = await scoreTeamFn({
+          data: {
+            userTeam: contact.userTeam,
+            userManagerName: state.managers?.[contact.userTeam]?.name ?? "Manager",
+            squadBrief,
+            history,
+            userMessage: msg,
+          },
+        });
+        const moraleMul = (state.settings?.pressInfluenceBaseline ?? 1) * (state.settings?.moraleVolatility ?? 1);
+        const respectMul = (state.settings?.managerRatingVolatility ?? 1);
+        const moraleDelta = Math.round(res.moraleTone * 2 * moraleMul);
+        const respectDelta = res.respectTone * 0.8 * respectMul;
+        if (moraleDelta !== 0) applyAllPlayersMoraleDelta(contact.userTeam, moraleDelta);
+        if (respectDelta !== 0) applyManagerRespectDelta(contact.userTeam, respectDelta);
+        const desc = moraleDelta === 0 && respectDelta === 0
+          ? "Squad noted it, no real change."
+          : `Squad morale ${moraleDelta >= 0 ? "+" : ""}${moraleDelta} · respect ${respectDelta >= 0 ? "+" : ""}${respectDelta.toFixed(1)}`;
+        toast("Team Chat sent", { description: desc });
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        reportAiOutcome(m);
+        if (m.includes("RATE_LIMIT")) setError("Servers busy — try again in a moment.");
+        else if (m.includes("CREDITS")) setError("AI credits exhausted. Add credits in Settings → Workspace → Usage.");
+        else setError("Couldn't score message. Effects not applied.");
+      } finally { setSending(false); }
+      return;
+    }
+
     // Real-life async: sometimes nobody answers right away (or at all).
     if (!shouldReply(msg)) {
       setSending(false);
