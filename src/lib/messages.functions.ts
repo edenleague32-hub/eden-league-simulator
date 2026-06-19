@@ -6,7 +6,7 @@ import { createServerFn } from "@tanstack/react-start";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-3-flash-preview";
 
-export type Counterpart = "manager" | "player";
+export type Counterpart = "manager" | "player" | "team";
 export interface DmTurn { role: "user" | "ai"; text: string; }
 
 interface DmInput {
