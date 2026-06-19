@@ -35,6 +35,7 @@ const KIND_META: Record<NotifKind, { icon: string; tone: string }> = {
   week: { icon: "›", tone: "text-muted-foreground" },
   champion: { icon: "🏆", tone: "text-stadium-gold" },
   sack: { icon: "⚑", tone: "text-highlight-red" },
+  message: { icon: "✉", tone: "text-highlight-blue" },
   "ai-credits": { icon: "⚡", tone: "text-highlight-red" },
   "ai-rate": { icon: "⏳", tone: "text-stadium-gold" },
 };
