@@ -285,6 +285,12 @@ export function MessagesSuite() {
       });
       const reply = await persist("ai", res.reply);
       if (reply) setRows((r) => [...r, reply]);
+      notifyIncomingDm({
+        from: contact.counterpartName,
+        team: contact.counterpartTeam,
+        kind: contact.kind as "manager" | "player",
+        preview: res.reply,
+      });
 
       // Apply effects.
       const volMul = (state.settings?.relationsVolatility ?? 1);
