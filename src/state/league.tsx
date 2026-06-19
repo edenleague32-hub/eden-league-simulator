@@ -2114,6 +2114,13 @@ export function LeagueProvider({ children }: { children: ReactNode }) {
         );
         return { ...prev, teams: { ...prev.teams, [team]: { ...t, players } } };
       }),
+    applyAllPlayersMoraleDelta: (team, delta) =>
+      update((prev) => {
+        const t = prev.teams[team];
+        if (!t) return prev;
+        const players = t.players.map((p) => ({ ...p, morale: clampMorale(p.morale + delta) }));
+        return { ...prev, teams: { ...prev.teams, [team]: { ...t, players } } };
+      }),
     applyTeamMoraleDelta: (team, delta) =>
       update((prev) => {
         const t = prev.teams[team];
