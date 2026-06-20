@@ -81,6 +81,78 @@ export async function restoreManagerMessages(rows: ManagerMessageRow[]): Promise
   }
 }
 
+// ---------------- league_history rows (past-season AI archive) ----------------
+export interface LeagueHistoryRow {
+  season: number;
+  champion: string | null;
+  summary: string;
+  standings: unknown;
+  leaderboards: unknown;
+  data: unknown;
+  created_at?: string;
+}
+
+export async function fetchLeagueHistory(): Promise<LeagueHistoryRow[]> {
+  const { data, error } = await supabase
+    .from("league_history")
+    .select("season, champion, summary, standings, leaderboards, data, created_at")
+    .order("season", { ascending: true });
+  if (error) {
+    console.warn("[export] failed to fetch league_history", error.message);
+    return [];
+  }
+  return ((data as unknown) as LeagueHistoryRow[]) ?? [];
+}
+
+export async function restoreLeagueHistory(rows: LeagueHistoryRow[]): Promise<void> {
+  await supabase.from("league_history").delete().gte("season", -2147483648);
+  if (!rows.length) return;
+  const slice = rows.map((r) => ({
+    season: r.season,
+    champion: r.champion,
+    summary: r.summary,
+    standings: r.standings as never,
+    leaderboards: r.leaderboards as never,
+    data: r.data as never,
+  }));
+  const { error } = await supabase.from("league_history").insert(slice as never);
+  if (error) console.warn("[import] failed to restore league_history", error.message);
+}
+
+// ---------------- league_versions rows (Settings & Version Archives) ----------------
+export interface LeagueVersionRow {
+  title: string;
+  data: unknown;
+  created_at: string;
+}
+
+export async function fetchLeagueVersions(): Promise<LeagueVersionRow[]> {
+  const { data, error } = await supabase
+    .from("league_versions")
+    .select("title, data, created_at")
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.warn("[export] failed to fetch league_versions", error.message);
+    return [];
+  }
+  return ((data as unknown) as LeagueVersionRow[]) ?? [];
+}
+
+export async function restoreLeagueVersions(rows: LeagueVersionRow[]): Promise<void> {
+  await supabase.from("league_versions").delete().not("id", "is", null);
+  if (!rows.length) return;
+  const CHUNK = 100;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK).map((r) => ({
+      title: r.title,
+      data: r.data as never,
+      created_at: r.created_at,
+    }));
+    const { error } = await supabase.from("league_versions").insert(slice as never);
+    if (error) console.warn("[import] failed to restore league_versions chunk", error.message);
+  }
+}
+
 // ---------------- Thread grouping ----------------
 // Group flat manager_messages rows into per-conversation threads so the
 // export surfaces readable message history alongside the raw rows.
@@ -113,12 +185,16 @@ export function groupMessageThreads(rows: ManagerMessageRow[]): MessageThread[] 
 }
 
 // ---------------- Full league export ----------------
-// Everything in LeagueState plus the Cloud-only DM history.
+// Everything in LeagueState plus the Cloud-only DM history, past-season
+// archive, and saved version snapshots — so re-importing restores every
+// suite (including Messages + Settings & Version Archives) exactly.
 export function buildLeagueExport(
   state: LeagueState,
   standings: StandingRow[],
   leaderboards: Leaderboards,
   messages: ManagerMessageRow[] = [],
+  history: LeagueHistoryRow[] = [],
+  versions: LeagueVersionRow[] = [],
 ) {
   return {
     exportedAt: new Date().toISOString(),
@@ -140,11 +216,11 @@ export function buildLeagueExport(
     settings: state.settings ?? null,
     draftPicks: state.draftPicks,
     draft: state.draft ?? null,
-    // DM + team-chat history (lives in Cloud, not in LeagueState).
-    // Grouped per-conversation view for readability, plus flat rows so the
-    // import path can round-trip them straight back into Supabase.
+    // Cloud-only slices (not in LeagueState).
     messageThreads: groupMessageThreads(messages),
     messages,
+    leagueHistory: history,
+    leagueVersions: versions,
     standings,
     goldenBoot: leaderboards.scorers,
     assistLeaders: leaderboards.assists,
@@ -157,10 +233,14 @@ export async function downloadLeagueExport(
   standings: StandingRow[],
   leaderboards: Leaderboards
 ) {
-  const messages = await fetchManagerMessages();
+  const [messages, history, versions] = await Promise.all([
+    fetchManagerMessages(),
+    fetchLeagueHistory(),
+    fetchLeagueVersions(),
+  ]);
   downloadJson(
     `eden-league-S${state.season}-W${state.currentWeek}-${stamp()}`,
-    buildLeagueExport(state, standings, leaderboards, messages)
+    buildLeagueExport(state, standings, leaderboards, messages, history, versions)
   );
 }
 
