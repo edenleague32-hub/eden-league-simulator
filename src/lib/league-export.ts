@@ -81,6 +81,78 @@ export async function restoreManagerMessages(rows: ManagerMessageRow[]): Promise
   }
 }
 
+// ---------------- league_history rows (past-season AI archive) ----------------
+export interface LeagueHistoryRow {
+  season: number;
+  champion: string | null;
+  summary: string;
+  standings: unknown;
+  leaderboards: unknown;
+  data: unknown;
+  created_at?: string;
+}
+
+export async function fetchLeagueHistory(): Promise<LeagueHistoryRow[]> {
+  const { data, error } = await supabase
+    .from("league_history")
+    .select("season, champion, summary, standings, leaderboards, data, created_at")
+    .order("season", { ascending: true });
+  if (error) {
+    console.warn("[export] failed to fetch league_history", error.message);
+    return [];
+  }
+  return ((data as unknown) as LeagueHistoryRow[]) ?? [];
+}
+
+export async function restoreLeagueHistory(rows: LeagueHistoryRow[]): Promise<void> {
+  await supabase.from("league_history").delete().gte("season", -2147483648);
+  if (!rows.length) return;
+  const slice = rows.map((r) => ({
+    season: r.season,
+    champion: r.champion,
+    summary: r.summary,
+    standings: r.standings as never,
+    leaderboards: r.leaderboards as never,
+    data: r.data as never,
+  }));
+  const { error } = await supabase.from("league_history").insert(slice as never);
+  if (error) console.warn("[import] failed to restore league_history", error.message);
+}
+
+// ---------------- league_versions rows (Settings & Version Archives) ----------------
+export interface LeagueVersionRow {
+  title: string;
+  data: unknown;
+  created_at: string;
+}
+
+export async function fetchLeagueVersions(): Promise<LeagueVersionRow[]> {
+  const { data, error } = await supabase
+    .from("league_versions")
+    .select("title, data, created_at")
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.warn("[export] failed to fetch league_versions", error.message);
+    return [];
+  }
+  return ((data as unknown) as LeagueVersionRow[]) ?? [];
+}
+
+export async function restoreLeagueVersions(rows: LeagueVersionRow[]): Promise<void> {
+  await supabase.from("league_versions").delete().not("id", "is", null);
+  if (!rows.length) return;
+  const CHUNK = 100;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK).map((r) => ({
+      title: r.title,
+      data: r.data as never,
+      created_at: r.created_at,
+    }));
+    const { error } = await supabase.from("league_versions").insert(slice as never);
+    if (error) console.warn("[import] failed to restore league_versions chunk", error.message);
+  }
+}
+
 // ---------------- Thread grouping ----------------
 // Group flat manager_messages rows into per-conversation threads so the
 // export surfaces readable message history alongside the raw rows.
