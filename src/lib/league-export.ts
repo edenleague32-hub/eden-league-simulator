@@ -185,12 +185,16 @@ export function groupMessageThreads(rows: ManagerMessageRow[]): MessageThread[] 
 }
 
 // ---------------- Full league export ----------------
-// Everything in LeagueState plus the Cloud-only DM history.
+// Everything in LeagueState plus the Cloud-only DM history, past-season
+// archive, and saved version snapshots — so re-importing restores every
+// suite (including Messages + Settings & Version Archives) exactly.
 export function buildLeagueExport(
   state: LeagueState,
   standings: StandingRow[],
   leaderboards: Leaderboards,
   messages: ManagerMessageRow[] = [],
+  history: LeagueHistoryRow[] = [],
+  versions: LeagueVersionRow[] = [],
 ) {
   return {
     exportedAt: new Date().toISOString(),
@@ -212,11 +216,11 @@ export function buildLeagueExport(
     settings: state.settings ?? null,
     draftPicks: state.draftPicks,
     draft: state.draft ?? null,
-    // DM + team-chat history (lives in Cloud, not in LeagueState).
-    // Grouped per-conversation view for readability, plus flat rows so the
-    // import path can round-trip them straight back into Supabase.
+    // Cloud-only slices (not in LeagueState).
     messageThreads: groupMessageThreads(messages),
     messages,
+    leagueHistory: history,
+    leagueVersions: versions,
     standings,
     goldenBoot: leaderboards.scorers,
     assistLeaders: leaderboards.assists,
@@ -229,10 +233,14 @@ export async function downloadLeagueExport(
   standings: StandingRow[],
   leaderboards: Leaderboards
 ) {
-  const messages = await fetchManagerMessages();
+  const [messages, history, versions] = await Promise.all([
+    fetchManagerMessages(),
+    fetchLeagueHistory(),
+    fetchLeagueVersions(),
+  ]);
   downloadJson(
     `eden-league-S${state.season}-W${state.currentWeek}-${stamp()}`,
-    buildLeagueExport(state, standings, leaderboards, messages)
+    buildLeagueExport(state, standings, leaderboards, messages, history, versions)
   );
 }
 
