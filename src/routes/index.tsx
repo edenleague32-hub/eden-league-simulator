@@ -127,7 +127,7 @@ function Toolbar() {
     e.target.value = "";
     if (!file) return;
     const ok = window.confirm(
-      `Import "${file.name}"?\n\nThis REPLACES the current league (teams, rosters, schedule, results, standings, managers, relations, settings, DM history) with the contents of the file. You can ↶ UNDO the league-state part immediately after if it looks wrong.`
+      `Import "${file.name}"?\n\nThis REPLACES the current league with the contents of the file — teams, rosters, schedule, results, standings, managers, relations, settings, DM/team-chat history, past-season archive, and saved version snapshots. You can ↶ UNDO the league-state part immediately after if it looks wrong.`
     );
     if (!ok) return;
     const reader = new FileReader();
@@ -136,10 +136,16 @@ function Toolbar() {
         const parsed = JSON.parse(String(reader.result ?? "")) as Record<string, unknown>;
         const res = importLeagueExport(parsed);
         if (!res.ok) { window.alert(`Import failed: ${res.error}`); return; }
-        // Restore the Cloud-only DM history (lives outside LeagueState).
+        // Restore the Cloud-only slices (lives outside LeagueState).
         const msgs = Array.isArray(parsed.messages) ? (parsed.messages as ManagerMessageRow[]) : [];
-        void restoreManagerMessages(msgs).catch((err) => {
-          console.warn("[import] DM restore failed", err);
+        const history = Array.isArray(parsed.leagueHistory) ? (parsed.leagueHistory as LeagueHistoryRow[]) : [];
+        const versions = Array.isArray(parsed.leagueVersions) ? (parsed.leagueVersions as LeagueVersionRow[]) : [];
+        void Promise.all([
+          restoreManagerMessages(msgs),
+          restoreLeagueHistory(history),
+          restoreLeagueVersions(versions),
+        ]).catch((err) => {
+          console.warn("[import] Cloud slice restore failed", err);
         });
       } catch (err) {
         window.alert(`Could not parse JSON: ${err instanceof Error ? err.message : "unknown error"}`);
