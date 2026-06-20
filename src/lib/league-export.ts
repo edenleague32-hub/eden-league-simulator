@@ -81,6 +81,37 @@ export async function restoreManagerMessages(rows: ManagerMessageRow[]): Promise
   }
 }
 
+// ---------------- Thread grouping ----------------
+// Group flat manager_messages rows into per-conversation threads so the
+// export surfaces readable message history alongside the raw rows.
+export interface MessageThread {
+  userTeam: string;
+  counterpartKind: string;     // "manager" | "player" | "team"
+  counterpartTeam: string;
+  counterpartName: string;
+  messages: Array<{ role: string; content: string; createdAt: string }>;
+}
+
+export function groupMessageThreads(rows: ManagerMessageRow[]): MessageThread[] {
+  const map = new Map<string, MessageThread>();
+  for (const r of rows) {
+    const key = `${r.user_team}::${r.counterpart_kind}::${r.counterpart_team}::${r.counterpart_name}`;
+    let t = map.get(key);
+    if (!t) {
+      t = {
+        userTeam: r.user_team,
+        counterpartKind: r.counterpart_kind,
+        counterpartTeam: r.counterpart_team,
+        counterpartName: r.counterpart_name,
+        messages: [],
+      };
+      map.set(key, t);
+    }
+    t.messages.push({ role: r.role, content: r.content, createdAt: r.created_at });
+  }
+  return Array.from(map.values());
+}
+
 // ---------------- Full league export ----------------
 // Everything in LeagueState plus the Cloud-only DM history.
 export function buildLeagueExport(
@@ -104,14 +135,15 @@ export function buildLeagueExport(
     tradeProposals: state.tradeProposals,
     freeAgents: state.freeAgents,
     contractsInitialized: state.contractsInitialized,
-    // --- newer state slices (managers + respect/harshness, relations,
-    //     editable engine settings, draft picks & live draft) ---
     managers: state.managers,
     relations: state.relations ?? {},
     settings: state.settings ?? null,
     draftPicks: state.draftPicks,
     draft: state.draft ?? null,
-    // --- DM history (lives in Cloud, not in LeagueState) ---
+    // DM + team-chat history (lives in Cloud, not in LeagueState).
+    // Grouped per-conversation view for readability, plus flat rows so the
+    // import path can round-trip them straight back into Supabase.
+    messageThreads: groupMessageThreads(messages),
     messages,
     standings,
     goldenBoot: leaderboards.scorers,
