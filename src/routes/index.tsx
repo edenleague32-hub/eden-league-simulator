@@ -18,7 +18,15 @@ import { DraftSuite } from "@/components/DraftSuite";
 import { MessagesSuite } from "@/components/MessagesSuite";
 import { ManagerGenerationWatcher } from "@/components/ManagerGenerationWatcher";
 import { NavigationProvider, useNavigation } from "@/state/navigation";
-import { downloadLeagueExport, restoreManagerMessages, type ManagerMessageRow } from "@/lib/league-export";
+import {
+  downloadLeagueExport,
+  restoreManagerMessages,
+  restoreLeagueHistory,
+  restoreLeagueVersions,
+  type ManagerMessageRow,
+  type LeagueHistoryRow,
+  type LeagueVersionRow,
+} from "@/lib/league-export";
 import { Button } from "@/components/ui/button";
 import edenLogo from "@/assets/eden-league-logo.svg";
 
